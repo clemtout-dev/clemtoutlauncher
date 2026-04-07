@@ -31,7 +31,7 @@ def build():
     ]
 
     for item in data_to_add:
-        cmd.append(f'--add-data="{item}"')
+        cmd.append(f'--add-data={item}')
 
     cmd.append('launcher.py')
 
