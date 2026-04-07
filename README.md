@@ -40,6 +40,11 @@ When launching a game in "Crack Fix" mode, the launcher passes the game's execut
 > ```
 > This forces the target application to bind to the **Spacewar (480)** context, enabling Steam features on community-patched games.
 
+## 💬 Join the Community
+
+[![Discord](https://img.shields.io/discord/123456789012345678?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/FmydUT2QGK)
+Join our Discord server for support, updates, and community servers!
+
 ## ⚖️ Disclaimer & Sources
 
 This launcher is a configuration utility intended for legitimate game owners to access alternative community servers. **This software does not endorse piracy.** Any misuse of this tool remains the sole responsibility of the end user. Clemtout Launcher is not affiliated with Valve Corporation, Steam, or Exit Games.
