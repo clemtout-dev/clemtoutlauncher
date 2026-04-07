@@ -19,7 +19,7 @@ import requests
 import vdf
 import urllib3
 import traceback
-import win32file
+import shutil
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -42,17 +42,20 @@ DEV_MODE = False
 
 if getattr(sys, 'frozen', False):
     BASE_DIR = Path(sys._MEIPASS)
+    EXE_DIR = Path(sys.executable).parent
 else:
     BASE_DIR = Path(__file__).resolve().parent
+    EXE_DIR = BASE_DIR
+
 USER_DIR = Path(os.getenv('APPDATA') or os.path.expanduser("~")) / 'clemtoutlauncher'
 BANNERS_DIR = USER_DIR / 'banners'
 GAMES_FILE = USER_DIR / 'games.json'
 SETTINGS_FILE = USER_DIR / 'settings.json'
+GAME_LOADER_EXE = BASE_DIR / "game_loader.exe"
+UNPACKER_EXE = BASE_DIR / "Unpacker" / "ClemtoutLauncher.CLI.exe"
 STEAMCMD_PATH = BASE_DIR / "steamcmd" / "steamcmd.exe"
 DEPOT_KEYS_FILE_PATH = BASE_DIR / "depotkeys.json"
 TOKENS_FILE_PATH = BASE_DIR / "appaccesstokens.json"
-GAME_LOADER_EXE = BASE_DIR / "game_loader.exe"
-UNPACKER_EXE = BASE_DIR / "Unpacker" / "ClemtoutLauncher.CLI.exe"
 
 import winreg
 
@@ -69,7 +72,7 @@ STEAM_PATH = os.environ.get("STEAM_PATH") or get_steam_install_path()
 LOGINUSERS_PATH = Path(STEAM_PATH) / "config" / "loginusers.vdf"
 AVATAR_DIR = Path(STEAM_PATH) / "config" / "avatarcache"
 
-STEAM_BASE_ID = 76561197960265728
+STEAM_BASE_ID = 76561197960265728  # Constante de conversion Steam32 → Steam64
 
 def convert_steam32_to_64(steam32: str) -> str:
     """Converts a SteamID32 (AccountID) to SteamID64."""
@@ -179,6 +182,12 @@ if not SETTINGS_FILE.exists():
             "theme": "dark"
         }, f)
 
+def get_loader_path():
+    stable_loader = EXE_DIR / "game_loader.exe"
+    if not stable_loader.exists():
+        shutil.copy2(BASE_DIR / "game_loader.exe", stable_loader)
+        shutil.copy2(BASE_DIR / "steam_api64.dll", EXE_DIR / "steam_api64.dll")
+    return stable_loader
 
 def get_insensitive(data, *keys):
     current = data
@@ -846,54 +855,69 @@ def api_launch_game(game_id):
         return jsonify({"error": "Game not found"}), 404
 
     game_path = game.get('path')
-    if not game_path or not Path(game_path).exists():
-        return jsonify({"error": "Executable not found on disk"}), 400
+
+    print(f"[DEBUG] BASE_DIR = {BASE_DIR}")
+    print(f"[DEBUG] GAME_LOADER_EXE = {GAME_LOADER_EXE}")
+    print(f"[DEBUG] GAME_LOADER existe ? {GAME_LOADER_EXE.exists()}")
+    print(f"[DEBUG] steam_api64.dll existe ? {(BASE_DIR / 'steam_api64.dll').exists()}")
+    print(f"[DEBUG] game path = {game_path}")
+    print(f"[DEBUG] game path existe ? {Path(game_path).exists() if game_path else 'None'}")
 
     try:
+        original_path = Path(game_path).resolve()
+        backup_path = original_path.with_suffix(".pack")
+
+        target_exe = str(original_path)
+
         if mode == 'direct':
-            subprocess.Popen([game_path], cwd=str(Path(game_path).parent), creationflags=0x08000000)
+            subprocess.Popen([target_exe], cwd=str(original_path.parent), creationflags=0x08000000)
             game["last_played"] = int(time.time())
             save_games(games_data)
             return jsonify({"success": True, "message": "Lancé en mode direct"})
 
         if not GAME_LOADER_EXE.exists():
-            return jsonify({"error": "game_loader.exe introuvable dans le dossier resources"}), 400
+            return jsonify({"error": f"Loader introuvable : {loader_path}"}), 400
 
+        target_appid = "480"
         env = os.environ.copy()
-        target_appid = str(game.get("steam_appid", "480"))
-        env.update({
-            "SteamAppId": target_appid,
-            "SteamEnv": "1"
-        })
-
-        original_path = Path(game_path)
-        backup_path = original_path.with_suffix(".pack")
+        env["SteamAppId"] = target_appid
+        env["SteamGameId"] = target_appid
+        env["SteamEnv"] = "1"
 
         if UNPACKER_EXE.exists() and not backup_path.exists():
             try:
-                print(f"[*] Tentative de Unpack (Steamless) pour {game_path}")
-                cmd = [str(UNPACKER_EXE), "--quiet", str(original_path)]
-                subprocess.run(cmd, capture_output=True, text=True, creationflags=0x08000000)
+                subprocess.run(
+                    [str(UNPACKER_EXE), "--quiet", target_exe],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=0x08000000
+                )
 
                 unpacked_found = original_path.with_name(original_path.stem + ".unpacked.exe")
                 if unpacked_found.exists():
                     os.rename(str(original_path), str(backup_path))
                     os.replace(str(unpacked_found), str(original_path))
-                    print("[*] Unpack réussi.")
             except Exception as unpack_e:
-                print(f"[!] Erreur Unpack: {unpack_e}")
+                print(f"Unpack error: {unpack_e}")
 
-        subprocess.Popen(
-            [str(GAME_LOADER_EXE), str(original_path)],
-            cwd=str(original_path.parent),
+        loader_path = str(get_loader_path())
+        loader_dir = str(Path(loader_path).parent)
+
+        result = subprocess.run(
+            [loader_path, target_exe],
+            cwd=loader_dir,
             env=env,
-            creationflags=0x08000000
+            capture_output=True,
+            text=True,
+            timeout=10
         )
+        print(f"[DEBUG] game_loader stdout: {result.stdout}")
+        print(f"[DEBUG] game_loader stderr: {result.stderr}")
+        print(f"[DEBUG] game_loader returncode: {result.returncode}")
 
         game["last_played"] = int(time.time())
         save_games(games_data)
-
-        return jsonify({"success": True, "message": "Jeu lancé avec le Crack Fix (Spacewar)"})
+        return jsonify({"success": True, "message": "Jeu lancé"})
 
     except Exception as e:
         print(f"[LAUNCH ERROR] {traceback.format_exc()}")
@@ -927,14 +951,14 @@ def scan_all_drives():
         r"Jeux\Steam"
     ]
 
-    print(f"[DEBUG] Disks detected : {available_drives}")
+    print(f"[DEBUG] Disques détectés : {available_drives}")
 
     for drive in available_drives:
         for folder in common_folders:
             full_path = Path(drive) / folder
             if (full_path / "steamapps").exists():
                 steam_paths.append(full_path)
-                print(f"[INFO] Library found (Scan) : {full_path}")
+                print(f"[INFO] Bibliothèque trouvée (Scan) : {full_path}")
 
     return steam_paths
 
@@ -951,7 +975,7 @@ def api_update_steam_playtime():
             try:
                 game["playtime"] = get_steam_playtime_from_config(steam_path, str(appid))
             except Exception as e:
-                print(f"[WARN] Unable to recover playtime for {appid}: {e}")
+                print(f"[WARN] Impossible de récupérer playtime pour {appid}: {e}")
 
     save_games(data)
     return jsonify({"success": True, "updated": len([g for g in data.get("games", []) if g.get("steam_appid")])})
@@ -978,12 +1002,18 @@ def api_import_steam_fixed():
         if p not in libraries:
             libraries.append(p)
 
+    print(f"[DEBUG] Liste finale des dossiers à scanner : {libraries}")
+
     for lib_path in libraries:
         steamapps_path = lib_path / "steamapps"
         if not steamapps_path.exists(): continue
+
+        print(f"[INFO] Scan en cours : {steamapps_path}")
+
         try:
             files = os.listdir(steamapps_path)
         except Exception as e:
+            print(f"[ERREUR] Impossible de lire {steamapps_path}: {e}")
             continue
 
         for fname in files:
