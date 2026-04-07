@@ -836,56 +836,67 @@ def detect_game_path(game_path):
 
 @app.route('/api/games/<game_id>/launch', methods=['POST'])
 def api_launch_game(game_id):
-    original_path = Path(game_path)
-    game_dir = original_path.parent
-    backup_path = original_path.with_suffix(".pack")
-    is_steam_stub_protected = False
+    data = request.get_json()
+    mode = data.get('mode', 'crack_fix')
 
-    steam_dll_found = any(game_dir.rglob("steam_api*.dll"))
+    games_data = load_games()
+    game = next((g for g in games_data['games'] if g['id'] == game_id), None)
 
-    if steam_dll_found:
-        try:
+    if not game:
+        return jsonify({"error": "Game not found"}), 404
 
-            with open(original_path, 'rb') as f:
-                header = f.read(10 * 1024 * 1024)
-                if b'steamstub' in header.lower() or b'.bind' in header:
-                    is_steam_stub_protected = True
-        except Exception as e:
-            print(f"[!] Signature reading error: {e}")
-
-    if is_steam_stub_protected and UNPACKER_EXE.exists() and not backup_path.exists():
-        try:
-            print(f"[*] SteamStub protection detected on {original_path.name}. Unpacking...")
-            unpacker_cwd = str(UNPACKER_EXE.parent)
-            cmd = [str(UNPACKER_EXE), "--quiet", str(original_path)]
-
-            subprocess.run(cmd, cwd=unpacker_cwd, capture_output=True, text=True, creationflags=0x08000000)
-
-            unpacked_found = original_path.with_name(original_path.stem + ".unpacked.exe")
-            if unpacked_found.exists():
-                os.rename(str(original_path), str(backup_path))
-                os.replace(str(unpacked_found), str(original_path))
-                print(f"[*] SUCCESS: {original_path.name} a été unpacké.")
-        except Exception as unpack_e:
-            print(f"[!] UNPACK ERROR: {unpack_e}")
-    else:
-        if not is_steam_stub_protected and steam_dll_found:
-            print(f"[*] Skip Unpack: Steam game detected (Unity/Other) but the EXE is not protected by SteamStub.")
-        elif not steam_dll_found:
-            print(f"[*] Skip Unpack: No Steam DLLs found, launching directly.")
+    game_path = game.get('path')
+    if not game_path or not Path(game_path).exists():
+        return jsonify({"error": "Executable not found on disk"}), 400
 
     try:
+        if mode == 'direct':
+            subprocess.Popen([game_path], cwd=str(Path(game_path).parent), creationflags=0x08000000)
+            game["last_played"] = int(time.time())
+            save_games(games_data)
+            return jsonify({"success": True, "message": "Lancé en mode direct"})
+
+        if not GAME_LOADER_EXE.exists():
+            return jsonify({"error": "game_loader.exe introuvable dans le dossier resources"}), 400
+
         env = os.environ.copy()
         target_appid = str(game.get("steam_appid", "480"))
-        env.update({"SteamAppId": target_appid, "SteamEnv": "1"})
+        env.update({
+            "SteamAppId": target_appid,
+            "SteamEnv": "1"
+        })
 
-        subprocess.Popen([str(GAME_LOADER_EXE), str(original_path)],
-                         cwd=str(game_dir), env=env, creationflags=0x08000000)
+        original_path = Path(game_path)
+        backup_path = original_path.with_suffix(".pack")
+
+        if UNPACKER_EXE.exists() and not backup_path.exists():
+            try:
+                print(f"[*] Tentative de Unpack (Steamless) pour {game_path}")
+                cmd = [str(UNPACKER_EXE), "--quiet", str(original_path)]
+                subprocess.run(cmd, capture_output=True, text=True, creationflags=0x08000000)
+
+                unpacked_found = original_path.with_name(original_path.stem + ".unpacked.exe")
+                if unpacked_found.exists():
+                    os.rename(str(original_path), str(backup_path))
+                    os.replace(str(unpacked_found), str(original_path))
+                    print("[*] Unpack réussi.")
+            except Exception as unpack_e:
+                print(f"[!] Erreur Unpack: {unpack_e}")
+
+        subprocess.Popen(
+            [str(GAME_LOADER_EXE), str(original_path)],
+            cwd=str(original_path.parent),
+            env=env,
+            creationflags=0x08000000
+        )
 
         game["last_played"] = int(time.time())
         save_games(games_data)
-        return jsonify({"success": True, "message": "Jeu lancé"})
+
+        return jsonify({"success": True, "message": "Jeu lancé avec le Crack Fix (Spacewar)"})
+
     except Exception as e:
+        print(f"[LAUNCH ERROR] {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/games/<game_id>/playtime', methods=['POST'])
