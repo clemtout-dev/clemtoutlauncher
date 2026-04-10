@@ -815,7 +815,7 @@ def detect_game_path(game_path):
             if shipping_dir.exists():
                 shipping_exes = list(shipping_dir.glob("*Shipping.exe"))
                 if not shipping_exes:
-                    shipping_exes = [f for f in shipping_dir.glob("*.exe") if "crash" not in f.name.lower()]
+                    shipping_exes = [f for f in shipping_dir.glob("*.exe") if not any(bad in f.name.lower() for bad in ["crash", "dumper", "report"])]
                 
                 if shipping_exes:
                     shipping_exes.sort(key=lambda x: x.stat().st_size, reverse=True)
@@ -832,7 +832,7 @@ def detect_game_path(game_path):
                 
             if "Binaries" in dirs and "Win64" in os.listdir(Path(root) / "Binaries"):
                 win64_path = Path(root) / "Binaries" / "Win64"
-                exes = [f for f in win64_path.glob("*.exe") if "shipping" in f.name.lower()]
+                exes = [f for f in win64_path.glob("*.exe") if "shipping" in f.name.lower() and not any(bad in f.name.lower() for bad in ["crash", "dumper", "report"])]
                 if exes:
                     exes.sort(key=lambda x: x.stat().st_size, reverse=True)
                     return str(exes[0])
@@ -1106,9 +1106,9 @@ def find_game_executable(install_dir, game_name):
     root_exes = list(install_dir.glob("*.exe"))
 
     blacklist = [
-        "unitycrashhandler", "crashreport", "setup", "install",
+        "crash", "dumper", "report", "setup", "install",
         "uninstall", "vcredist", "python", "steamcmd", "clemtoutlauncher",
-        "game_loader", "helper", "overlay", "config", "touch"
+        "game_loader", "helper", "overlay", "config", "touch", "anticheat",
     ]
 
     candidates = [exe for exe in root_exes if not any(bad in exe.name.lower() for bad in blacklist)]
