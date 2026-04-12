@@ -21,7 +21,7 @@ The core logic is powered by a **Python Flask server** (`app.py`).
 ### 3. Photon Server Logic (External)
 The multiplayer connectivity for Photon relays utilizes a customized version of **Luxon Server**.
 > **Note on Luxon Server:**
-> The server-side logic is based on the [Luxon Server](https://gitlab.com/steamautocracks/manifesthub) project.
+> The server-side logic is based on the [Luxon Server](https://gitlab.com/luxon_project/LuxonServer) project.
 > *Original code by Luxon Server contributors. Modified by Me for better compatibility and performance specifically for Photon network relays within ClemtoutLauncher.*
 > **Note:** This code is not bundled within this repository's source but runs on the community-hosted server backend.
 
