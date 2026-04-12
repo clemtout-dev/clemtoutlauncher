@@ -46,7 +46,7 @@ This launcher is a configuration utility intended for legitimate game owners to 
 **Special Thanks & Attributions:**
 - **Unpacker Engine:** [Steamless](https://github.com/atom0s/Steamless) by atom0s.
 - **Steam Data Source:** [Manifesthub](https://gitlab.com/steamautocracks/manifesthub).
-- **Server Backend Logic:** [Luxon Server](https://gitlab.com/steamautocracks/manifesthub) (BSD 3-Clause License).
+- **Server Backend Logic:** [Luxon Server](https://gitlab.com/luxon_project/LuxonServer) (BSD 3-Clause License).
 
 ---
 *Created by the ClemtoutLauncher Team. Licensed for non-commercial use only.*
