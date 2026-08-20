@@ -1,52 +1,58 @@
 # Clemtout Launcher
 
-Clemtout Launcher is a custom-built, modern game launcher that provides an elegant interface to manage, launch, and patch your games. It features seamless Steam integration, automatic Steam emulator configuration fetching, and Photon network relay management for community server multiplayer.
+**Clemtout Launcher** is a modern, custom-built **all-in-one launcher and suite** that unifies multiple third-party utilities, game patching engines, Epic Online Services (EOS) bypass tools, and network management tools into a single, seamless interface. 
 
-## 🚀 Features
-
-- **Modern UI/UX**: Built with HTML, CSS, and Vanilla JS, featuring a dark, high-tech glassmorphism aesthetic.
-- **Steam Integration**: Extracts AppIDs automatically, fetches high-quality capsules from Steam CDN, and tracks local playtime across different Steam accounts.
-- **Automated Game Patching**: Integrates an intelligent unpacking flow (Steamless) that detects SteamStub protection while bypassing non-protected files (like Unity exes) to prevent corruption.
-- **Photon Network Relay**: A built-in configuration manager that modifies system hosts to redirect Exit Games (Photon) server traffic to community-hosted relays.
-- **Multi-Launch Modes**: Launch games directly or through a Steam overlay wrapper (Spacewar - AppID 480) for advanced multiplayer capabilities.
-
-## 🛠️ Architecture
-
-### 1. Frontend (`/frontend`)
-The presentation layer uses standard web technologies inside a `pywebview` window.
-
-### 2. Backend (`/backend`)
-The core logic is powered by a **Python Flask server** (`app.py`).
-
-### 3. Photon Server Logic (External)
-The multiplayer connectivity for Photon relays utilizes a customized version of **Luxon Server**.
-> **Note on Luxon Server:**
-> The server-side logic is based on the [Luxon Server](https://gitlab.com/luxon_project/LuxonServer) project.
-> *Original code by Luxon Server contributors. Modified by Me for better compatibility and performance specifically for Photon network relays within ClemtoutLauncher.*
-> **Note:** This code is not bundled within this repository's source but runs on the community-hosted server backend.
-
-## ⚠️ Important: Initial Setup
-
-Before using or compiling the launcher, please note that the integrated **SteamCMD** utility is not fully functional out of the box.
-
-1. **Manual Initialization**: You must first navigate to the `backend/steamcmd` directory and execute `steamcmd.exe` manually. 
-2. **Download Updates**: This allows the utility to download its internal files and update itself to the latest version.
-3. **Installation Completion**: Once SteamCMD reaches the `Steam>` prompt, you can close it. 
-4. **Compilation**: Only after this manual step should you proceed to compile the launcher or run the Python backend.
-
-## 💬 Join the Community
-
-[![Discord](https://img.shields.io/discord/123456789012345678?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/FmydUT2QGK)
-Join our Discord server for support, updates, and community servers!
-
-## ⚖️ Disclaimer & Sources
-
-This launcher is a configuration utility intended for legitimate game owners to access alternative community servers. **This software does not endorse piracy.** Any misuse of this tool remains the sole responsibility of the end user. Clemtout Launcher is not affiliated with Valve Corporation, Steam, or Exit Games.
-
-**Special Thanks & Attributions:**
-- **Unpacker Engine:** [Steamless](https://github.com/atom0s/Steamless) by atom0s.
-- **Server Backend Logic:** [Luxon Server](https://gitlab.com/luxon_project/LuxonServer) (BSD 3-Clause License).
-- **Open SteamTool:** [OpenSteamTool](https://github.com/OpenSteam001/OpenSteamTool) (GNU GPLv3 License).
+It acts as an orchestration layer designed to help game owners manage, launch, patch, and configure alternative multiplayer connections efficiently from one central dashboard.
 
 ---
-*Created by the ClemtoutLauncher Team. Licensed for non-commercial use only.*
+
+## Features
+
+- **All-In-One Unified Suite**: Aggregates essential game management, patching, bypass, and networking tools into a single application.
+- **Modern UI/UX**: Built with HTML, CSS, and Vanilla JS inside `pywebview`, featuring a dark, high-tech glassmorphism aesthetic.
+- **Steam Integration**: Extracts AppIDs automatically, fetches high-quality capsules from Steam CDN, and tracks local playtime across different Steam accounts.
+- **Automated Game Patching & Unpacking**: Integrates smart unpacking mechanisms (Steamless) to detect SteamStub protection while bypassing non-protected files (like Unity executables) to prevent corruption.
+- **EOS / Epic Games SDK Bypass**: Incorporates Epic Online Services (EOS) handling via OnlineFix scripts for enhanced compatibility with modified game clients and multiplayer overlays.
+- **Multi-Launch Modes**: Launch games directly or through a Steam overlay wrapper (Spacewar - AppID 480) for community multiplayer functionality.
+
+---
+
+## 🛠️ Integrated Sources & Underlying Tools
+
+Clemtout Launcher is an interface built upon the work of several open-source projects and external web services. We strongly encourage users to check out the original sources:
+
+| Tool / API | Role in Clemtout Launcher | Official Source |
+| :--- | :--- | :--- |
+| **OpenSteamTool** | Steam integration & tool execution | [GitHub Repository](https://github.com/OpenSteam001/OpenSteamTool) |
+| **Steamless** | Intelligent unpacking engine (SteamStub removal) | [GitHub Repository](https://github.com/atom0s/Steamless) |
+| **OnlineFix (EOS Bypass)** | Epic Games SDK / EOS overlay and bypass modules | [GitHub Repository](https://github.com/Ran-Mewo/OnlineFix) |
+| **Walftech Lua API** | External configurations & `.lua` API integration | [Walftech Website](https://walftech.com) |
+
+---
+
+## Architecture
+
+### 1. Frontend (`/frontend`)
+The presentation layer uses standard web technologies rendered via a Python `pywebview` frame.
+
+### 2. Backend (`/backend`)
+Powered by a **Python Flask server** (`app.py`), orchestrating local scripts, `.lua` configurations, EOS integration scripts, and system-level host modifications.
+
+## Community & Support
+
+[![Discord](https://img.shields.io/discord/123456789012345678?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/FmydUT2QGK)
+
+Join our Discord community for updates, troubleshooting, and server announcements!
+
+---
+
+## ⚖️ Disclaimer & Intellectual Property Notice
+
+### Interface Notice
+Clemtout Launcher is purely a **frontend interface and configuration wrapper** designed to combine existing standalone tools into a single user experience. **Clemtout Launcher does not claim ownership over any integrated third-party engines, APIs, bypasses, or scripts.**
+
+### Copyright & Rights Holders
+If you are a copyright holder or developer with questions, DMCA concerns, or licensing inquiries regarding specific modules (such as Steamless, OpenSteamTool, OnlineFix, or Walftech scripts), **you must refer directly to the respective upstream source repositories and original creators listed in the [Integrated Sources](#-integrated-sources--underlying-tools) section.**
+
+### Terms of Use
+This tool is intended solely for legitimate game owners accessing alternative community infrastructure. This software does not endorse or encourage piracy. Any misuse of this tool remains the sole responsibility of the end user. Clemtout Launcher is not affiliated with, authorized by, or endorsed by Valve Corporation, Steam, Epic Games, or Exit Games.
