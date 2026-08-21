@@ -3,13 +3,23 @@
 # Sources:
 # - Unpacker/Steamless: https://github.com/atom0s/Steamless
 # - Steamtool : https://github.com/OpenSteam001/OpenSteamTool
-import os, sys, threading, io, hashlib, re, json, uuid, time, zipfile, requests, vdf, urllib3, traceback, mimetypes, shutil, subprocess, random
-
+import os, sys, threading, io, hashlib, re, json, uuid, time, zipfile, requests, vdf, urllib3, traceback, mimetypes, shutil, subprocess, random, hashlib
 from pathlib import Path
 from flask import Flask, jsonify, send_file, request, abort, send_from_directory, Response, redirect
 from flask_cors import CORS
 
 _logs = []
+
+USER_AGENTS = [
+    (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101"
+        " Firefox/121.0"
+    ),
+]
 
 def log(msg):
     _logs.append(msg)
@@ -550,116 +560,216 @@ def sync_launchertools(steam_base_path: str):
 
             shutil.copy2(source_file, target_file)
 
+def solve_pow(challenge: str, dificultad: int = 4) -> str:
+  objetivo = "0" * dificultad
+  for nonce in range(20000000):
+    digest = hashlib.sha256(f"{challenge}:{nonce}".encode("utf-8")).hexdigest()
+    if digest.startswith(objetivo):
+      return str(nonce)
+  return None
+
+
+def fetch_fallback_lua(appid: str, headers: dict) -> tuple:
+  session = requests.Session()
+
+  api_headers = headers.copy()
+  api_headers.update({
+      "accept": "*/*",
+      "content-type": "application/json",
+      "origin": "https://walftech.com",
+      "sec-fetch-dest": "empty",
+      "sec-fetch-mode": "cors",
+      "sec-fetch-site": "same-origin",
+  })
+
+  partie1 = random.randint(100000000, 999999999)
+  partie2 = random.randint(1000000000, 1999999999)
+  session.cookies.set("_ga", f"GA1.1.{partie1}.{partie2}")
+
+  try:
+    resp_chal = session.post(
+        "https://walftech.com/gate.php",
+        json={"action": "challenge"},
+        headers=api_headers,
+        timeout=15,
+    )
+    if resp_chal.status_code != 200:
+      return None, resp_chal.status_code
+
+    chal_data = resp_chal.json()
+    challenge = chal_data.get("challenge")
+    dificultad = chal_data.get("difficulty", 4)
+
+    if not challenge:
+      return None, resp_chal.status_code
+
+    nonce = solve_pow(challenge, dificultad)
+    if not nonce:
+      return None, resp_chal.status_code
+
+    payload_redeem = {
+        "action": "redeem",
+        "id": str(appid),
+        "challenge": challenge,
+        "nonce": nonce,
+    }
+
+    resp_redeem = session.post(
+        "https://walftech.com/gate.php",
+        json=payload_redeem,
+        headers=api_headers,
+        timeout=15,
+    )
+    if resp_redeem.status_code != 200:
+      return None, resp_redeem.status_code
+
+    redeem_data = resp_redeem.json()
+    token = redeem_data.get("token") or redeem_data.get("result")
+    if not token:
+      return None, resp_redeem.status_code
+
+    download_url = f"https://walftech.com/depotbox_lua.php?id={appid}&token={token}&format=lua"
+    resp_file = session.get(download_url, headers=headers, timeout=30)
+
+    if resp_file.status_code == 200 and resp_file.content:
+      return resp_file.content, 200
+
+    return None, resp_file.status_code
+
+  except Exception:
+    return None, None
+
+
+def save_lua_payload(
+    content: bytes, config_base: str, target_folders: list, appid: str
+):
+  if content.startswith(b"PK"):
+    with zipfile.ZipFile(io.BytesIO(content)) as z:
+      for filename in z.namelist():
+        if filename.endswith(".lua"):
+          parts = filename.split("/")
+          folder_target = (
+              parts[0]
+              if (len(parts) > 1 and parts[0] in target_folders)
+              else "lua"
+          )
+          file_basename = os.path.basename(filename)
+          dest_path = os.path.join(config_base, folder_target, file_basename)
+
+          lua_content = z.read(filename).decode("utf-8", errors="ignore")
+          clean_lines = [
+              line
+              for line in lua_content.splitlines()
+              if not line.strip().lower().startswith("setmanifest")
+          ]
+
+          with open(dest_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write("\n".join(clean_lines))
+  else:
+    lua_content = content.decode("utf-8", errors="ignore")
+    clean_lines = [
+        line
+        for line in lua_content.splitlines()
+        if not line.strip().lower().startswith("setmanifest")
+    ]
+
+    dest_path = os.path.join(config_base, "lua", f"{appid}.lua")
+    with open(dest_path, "w", encoding="utf-8", newline="\n") as f:
+      f.write("\n".join(clean_lines))
+
+
 def process_appid(appid: str):
-    try:
-        steam_path = get_steam_install_path()
-    except NameError:
-        steam_path = r"C:\Program Files (x86)\Steam"
+  try:
+    steam_path = get_steam_install_path()
+  except NameError:
+    steam_path = r"C:\Program Files (x86)\Steam"
 
-    config_base = os.path.join(steam_path, "config")
-    target_folders = ["lua", "stplug-in"]
+  config_base = os.path.join(steam_path, "config")
+  target_folders = ["lua", "stplug-in"]
 
-    for folder in target_folders:
-        os.makedirs(os.path.join(config_base, folder), exist_ok=True)
+  for folder in target_folders:
+    os.makedirs(os.path.join(config_base, folder), exist_ok=True)
 
-    print(f"[*] Querying API for AppID {appid}...")
+  print(f"[*] Querying API for AppID {appid}...")
 
-    partie1 = random.randint(100000000, 999999999)
-    partie2 = random.randint(1000000000, 1999999999)
-    faux_cookie_ga = f"GA1.1.{partie1}.{partie2}"
+  partie1 = random.randint(100000000, 999999999)
+  partie2 = random.randint(1000000000, 1999999999)
+  faux_cookie_ga = f"GA1.1.{partie1}.{partie2}"
 
-    cookies = {
-        "_ga": faux_cookie_ga
-    }
+  cookies = {"_ga": faux_cookie_ga}
 
+  headers = {
+      "User-Agent": random.choice(USER_AGENTS),
+      "accept": (
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+      ),
+      "accept-language": "fr,fr-FR;q=0.9,en;q=0.8",
+      "referer": "https://walftech.com/generator.html",
+      "upgrade-insecure-requests": "1",
+      "sec-ch-ua-platform": '"Windows"',
+  }
 
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "accept-language": "fr,fr-FR;q=0.9,en;q=0.8",
-        "referer": "https://walftech.com/generator.html",
-        "upgrade-insecure-requests": "1",
-        "sec-ch-ua-platform": '"Windows"',
-    }
+  url = f"https://walftech.com/proxy.php?id={appid}"
 
-    url = f"https://walftech.com/proxy.php?id={appid}"
+  try:
+    response = requests.get(
+        url,
+        headers=headers,
+        cookies=cookies,
+        timeout=30,
+    )
 
-    try:
-        response = requests.get(
-            url,
-            headers=headers,
-            cookies=cookies,
-            timeout=30,
+    content_bytes = None
+    status_code = response.status_code
+
+    if status_code == 200 and response.content:
+      if (
+          b"cf-challenge" in response.content
+          or b"<html" in response.content[:100].lower()
+      ):
+        return (
+            None,
+            "Blocked by Cloudflare. The site requires manual verification.",
         )
+      content_bytes = response.content
+    else:
+      content_bytes, fallback_status = fetch_fallback_lua(appid, headers)
+      if fallback_status:
+        status_code = fallback_status
 
-        if response.status_code == 200 and response.content:
-            if b"cf-challenge" in response.content or b"<html" in response.content[:100].lower():
-                return (
-                    None,
-                    "Blocked by Cloudflare. The site requires manual verification.",
-                )
+    if content_bytes:
+      save_lua_payload(content_bytes, config_base, target_folders, appid)
 
-            with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-                for filename in z.namelist():
-                    if filename.endswith(".lua"):
-                        parts = filename.split("/")
-                        folder_target = (
-                            parts[0]
-                            if (
-                                len(parts) > 1 and parts[0] in target_folders
-                            )
-                            else "lua"
-                        )
-                        file_basename = os.path.basename(filename)
-                        dest_path = os.path.join(
-                            config_base, folder_target, file_basename
-                        )
+      if "smart_sync_launchertools" in globals():
+        print("[*] Vérification et synchronisation des fichiers...")
+        smart_sync_launchertools(steam_path)
 
-                        lua_content = (
-                            z.read(filename)
-                            .decode("utf-8", errors="ignore")
-                        )
-                        clean_lines = []
-                        for line in lua_content.splitlines():
-                            if not line.strip().lower().startswith(
-                                "setmanifest"
-                            ):
-                                clean_lines.append(line)
+      return (
+          config_base,
+          f"Lua file for {appid} retrieved from API.",
+      )
 
-                        clean_lua_content = "\n".join(clean_lines)
+    if status_code == 500:
+      return (
+          None,
+          "Error 404: The API does not have the files for the desired game;"
+          "  please import the games into the import area.",
+      )
+    elif status_code == 403:
+      return (
+          None,
+          "Error 403: Access denied (Cloudflare cookie expired or invalid). You"
+          " must manually import the Lua files into the designated area.",
+      )
+    else:
+      return (
+          None,
+          f"Le serveur a renvoyé une erreur : {status_code}. Voplease import"
+          " the games into the import area.",
+      )
 
-                        with open(
-                            dest_path, "w", encoding="utf-8", newline="\n"
-                        ) as f:
-                            f.write(clean_lua_content)
-
-            if "smart_sync_launchertools" in globals():
-                print("[*] Vérification et synchronisation des fichiers...")
-                smart_sync_launchertools(steam_path)
-
-            return (
-                config_base,
-                f"Lua file for {appid} retrieved from API.",
-            )
-        elif response.status_code == 500:
-            return (
-                None,
-                "Error 404: The API does not have the files for the desired game;  please import the games into the import area."
-            )
-
-        elif response.status_code == 403:
-            return (
-                None,
-                "Error 403: Access denied (Cloudflare cookie expired or invalid). You must manually import the Lua files into the designated area.",
-            )
-        else:
-            return (
-                None,
-                f"Le serveur a renvoyé une erreur : {response.status_code}. Voplease import the games into the import area.",
-            )
-
-    except Exception as e:
-        return None, f"API connection error : {e}"
+  except Exception as e:
+    return None, f"API connection error : {e}"
 
 @app.route('/api/lua/upload', methods=['POST'])
 def api_lua_upload():
@@ -737,7 +847,7 @@ def get_playtime_for_account(steam_path: str, steamid64: str, appid: str) -> int
             playtime_minutes = get_insensitive(node, "PlaytimeTotal")
             
         if isinstance(playtime_minutes, (str, int, float)) and str(playtime_minutes).isdigit():
-            return int(playtime_minutes) * 60  # convert minutes → seconds
+            return int(playtime_minutes) * 60
             
         return 0
 
